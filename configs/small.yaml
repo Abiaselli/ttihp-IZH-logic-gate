@@ -1,13 +1,13 @@
 # Initial target; silicon fit and timing have NOT been verified.
 project:
-  title: "Izhikevich event bridge (16 neurons)"
-  author: "University of Delaware"
+  title: "Izhikevich event bridge (4 neurons)"
+  author: "REPLACE_WITH_TEAM_NAME"
   discord: ""
   description: "Programmable time-multiplexed neuron bank with digital event capture"
   language: "Verilog"
   clock_hz: 20000000
-  tiles: "6x4"
-  top_module: "tt_um_izh_bridge_large"
+  tiles: "3x2"
+  top_module: "tt_um_izh_bridge_small"
   source_files:
     - "serial_mul.v"
     - "neuron_bank.v"
