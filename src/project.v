@@ -1,27 +1,73 @@
-/*
- * Copyright (c) 2024 Your Name
- * SPDX-License-Identifier: Apache-2.0
- */
-
+`timescale 1ns/1ps
 `default_nettype none
-
-module tt_um_verilog (
-    input  wire [7:0] ui_in,    // Dedicated inputs
-    output wire [7:0] uo_out,   // Dedicated outputs
-    input  wire [7:0] uio_in,   // IOs: Input path
-    output wire [7:0] uio_out,  // IOs: Output path
-    output wire [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
-    input  wire       ena,      // always 1 when the design is powered, so you can ignore it
-    input  wire       clk,      // clock
-    input  wire       rst_n     // reset_n - low to reset
+// Byte-stream transport. Host signals synchronous to clk; external events async.
+module izh_bridge #(parameter integer N=16)(
+    input wire [7:0] ui_in, output wire [7:0] uo_out,
+    input wire [7:0] uio_in, output wire [7:0] uio_out, uio_oe,
+    input wire ena, clk, rst_n
 );
-
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
-  assign uio_out = 0;
-  assign uio_oe  = 0;
-
-  // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, 1'b0};
-
+    wire _unused = &{1'b0,uio_in[3],uio_in[1]};
+    localparam RX=0, ISSUE=1, WAIT=2, TX=3;
+    reg [1:0] state;
+    reg [2:0] byte_idx;
+    reg [7:0] op, address;
+    reg [17:0] data;
+    reg [3:0] sync1, sync2, delayed;
+    wire [3:0] events = sync2 & ~delayed;
+    wire req_ready, resp_valid;
+    wire [7:0] status, response_address;
+    wire [17:0] response_data;
+    wire response_taken = ena && state == TX && byte_idx == 4 && uio_in[2];
+    neuron_bank #(.N(N)) bank(
+        .clk(clk),.rst_n(rst_n),.ext_event(events),
+        .req_valid(ena && state==ISSUE),.req_ready(req_ready),.op(op),.address(address),.data(data),
+        .resp_valid(resp_valid),.resp_ready(response_taken),
+        .status(status),.response_address(response_address),.response_data(response_data));
+    assign uio_oe = 8'h0a;
+    assign uio_out = {4'd0,(ena && state==TX),1'b0,(ena && state==RX),1'b0};
+    assign uo_out = byte_idx==0 ? status : byte_idx==1 ? response_address :
+                    byte_idx==2 ? response_data[7:0] : byte_idx==3 ? response_data[15:8] :
+                    {6'd0,response_data[17:16]};
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            state<=RX; byte_idx<=0; op<=0; address<=0; data<=0;
+            sync1<=0; sync2<=0; delayed<=0;
+        end else begin
+            sync1<=uio_in[7:4]; sync2<=sync1; delayed<=sync2;
+            if (ena) case (state)
+                RX: if (uio_in[0]) begin
+                    case (byte_idx)
+                        0: op<=ui_in; 1: address<=ui_in;
+                        2: data[7:0]<=ui_in; 3: data[15:8]<=ui_in;
+                        4: data[17:16]<=ui_in[1:0];
+                        default: ;
+                    endcase
+                    if (byte_idx==4) begin state<=ISSUE; byte_idx<=0; end
+                    else byte_idx<=byte_idx+1'b1;
+                end
+                ISSUE: if (req_ready) state<=WAIT;
+                WAIT: if (resp_valid) begin state<=TX; byte_idx<=0; end
+                TX: if (uio_in[2]) begin
+                    if (byte_idx==4) begin state<=RX; byte_idx<=0; end
+                    else byte_idx<=byte_idx+1'b1;
+                end
+            endcase
+        end
+    end
 endmodule
+
+module tt_um_izh_bridge_small(
+    input wire [7:0] ui_in, output wire [7:0] uo_out,
+    input wire [7:0] uio_in, output wire [7:0] uio_out, uio_oe,
+    input wire ena, clk, rst_n
+);
+    izh_bridge #(.N(4)) impl(ui_in,uo_out,uio_in,uio_out,uio_oe,ena,clk,rst_n);
+endmodule
+module tt_um_izh_bridge_large(
+    input wire [7:0] ui_in, output wire [7:0] uo_out,
+    input wire [7:0] uio_in, output wire [7:0] uio_out, uio_oe,
+    input wire ena, clk, rst_n
+);
+    izh_bridge #(.N(16)) impl(ui_in,uo_out,uio_in,uio_out,uio_oe,ena,clk,rst_n);
+endmodule
+`default_nettype wire
