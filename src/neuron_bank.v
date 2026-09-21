@@ -18,7 +18,7 @@ module neuron_bank #(parameter integer N = 16) (
     reg [4:0] src0[0:N-1], src1[0:N-1];
     reg [15:0] spikes, next_spikes;
     reg [3:0] pending, ext_frame;
-    reg event_overrun, clipped;
+    reg event_overrun, frame_overrun, clipped;
     reg [3:0] idx;
     localparam integer AW = $clog2(N);
     wire [AW-1:0] ix=idx[AW-1:0];
@@ -36,6 +36,11 @@ module neuron_bank #(parameter integer N = 16) (
     assign req_ready = (state == IDLE) && !resp_valid;
     wire [3:0] target = address[3:0];
     wire [3:0] field = address[7:4];
+
+    // Repeated events from a source that is already pending collapse into one
+    // pending bit. Track that loss so it can be reported for the STEP frame
+    // that consumes the pending event set.
+    wire duplicate_event = |(pending & ext_event);
 
     function signed [31:0] sx;
         input signed [17:0] x;
@@ -79,7 +84,8 @@ module neuron_bank #(parameter integer N = 16) (
     always @(posedge clk) begin
         if (!rst_n) begin
             state <= IDLE; resp_valid <= 0; status <= 0; response_address <= 0;
-            response_data <= 0; pending <= 0; ext_frame <= 0; event_overrun <= 0;
+            response_data <= 0; pending <= 0; ext_frame <= 0;
+            event_overrun <= 0; frame_overrun <= 0;
             clipped <= 0; idx <= 0; spikes <= 0; next_spikes <= 0;
             mul_start <= 0; ma <= 0; mb <= 0; quadratic <= 0; snew <= 0;
             for (k=0;k<N;k=k+1) begin
@@ -90,7 +96,7 @@ module neuron_bank #(parameter integer N = 16) (
             end
         end else begin
             pending <= pending | ext_event;
-            if (|(pending & ext_event)) event_overrun <= 1;
+            if (duplicate_event) event_overrun <= 1;
             mul_start <= 0;
             if (resp_valid && resp_ready) resp_valid <= 0;
             case (state)
@@ -98,7 +104,19 @@ module neuron_bank #(parameter integer N = 16) (
                     status <= 0; response_address <= address; response_data <= 0;
                     if (op == 8'h03) begin
                         idx <= 0; next_spikes <= 0; clipped <= 0;
-                        ext_frame <= pending | ext_event; pending <= 0; state <= LOAD;
+
+                        // Freeze this STEP's external event set and its overrun
+                        // indication. Include duplicate_event explicitly because
+                        // a duplicate may arrive on this exact clock edge before
+                        // the nonblocking event_overrun update takes effect.
+                        ext_frame <= pending | ext_event;
+                        frame_overrun <= event_overrun | duplicate_event;
+
+                        // Begin collecting a fresh event frame while this STEP
+                        // is being computed.
+                        pending <= 0;
+                        event_overrun <= 0;
+                        state <= LOAD;
                     end else if (op != 8'h01 && op != 8'h02) begin
                         status <= 8'h80; resp_valid <= 1;
                     end else if ({1'b0,target} >= COUNT || field > 11) begin
@@ -133,7 +151,10 @@ module neuron_bank #(parameter integer N = 16) (
                     mul_start <= 1; state <= VWAIT;
                 end
                 VWAIT: if (mul_done) begin
-                    quadratic <= $signed({{6{product[39]}},product[39:14]}) + $signed({31'd0,product[13]}); // 4*x*x in Q16
+                    // V is stored as (v/100)*2^16 = v*655.36.
+                    // Therefore encoded 0.04*v^2 = V^2*(0.04/655.36)
+                    // = V^2/2^14. product[13] supplies rounding for >>14.
+                    quadratic <= $signed({{6{product[39]}},product[39:14]}) + $signed({31'd0,product[13]});
                     ma <= {{2{b[ix][17]}},b[ix]}; mb <= {{2{v[ix][17]}},v[ix]};
                     mul_start <= 1; state <= BWAIT;
                 end
@@ -152,7 +173,7 @@ module neuron_bank #(parameter integer N = 16) (
                 FINISH: begin
                     spikes <= next_spikes; response_data <= {2'd0,next_spikes};
                     response_address <= 0;
-                    status <= {6'd0,event_overrun,clipped};
+                    status <= {6'd0,frame_overrun,clipped};
                     resp_valid <= 1; state <= IDLE;
                 end
                 default: state <= IDLE;

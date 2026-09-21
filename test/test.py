@@ -38,6 +38,17 @@ async def transact(dut, command):
 
     return response
 
+async def pulse_external_event(dut, source=0):
+    """Generate one clean rising-edge event on uio[4+source]."""
+    assert 0 <= source <= 3
+    mask = 1 << (4 + source)
+
+    # Hold high/low long enough to cross and re-arm the 2-flop synchronizer.
+    dut.uio_in.value = mask
+    await ClockCycles(dut.clk, 4)
+    dut.uio_in.value = 0
+    await ClockCycles(dut.clk, 4)
+
 @cocotb.test()
 async def test_bridge_protocol(dut):
     # Nominal 10 MHz project clock.
@@ -67,3 +78,20 @@ async def test_bridge_protocol(dut):
 
     response = await transact(dut, [0x02, 0x00, 0x00, 0x00, 0x00])
     assert response == [0x00, 0x00, 0xB9, 0x5A, 0x03]
+
+    # Two separate events from the same external source before a STEP collapse
+    # into one pending event, so this STEP must report status[1] = overrun.
+    await pulse_external_event(dut, 0)
+    await pulse_external_event(dut, 0)
+
+    response = await transact(dut, [0x03, 0x00, 0x00, 0x00, 0x00])
+    assert response[0] & 0x02, (
+        f"Expected event-overrun bit on first STEP, status=0x{response[0]:02X}"
+    )
+
+    # With no duplicate event in the next frame, status[1] must clear rather
+    # than remaining sticky until reset.
+    response = await transact(dut, [0x03, 0x00, 0x00, 0x00, 0x00])
+    assert (response[0] & 0x02) == 0, (
+        f"Overrun bit remained sticky, status=0x{response[0]:02X}"
+    )
