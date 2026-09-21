@@ -56,18 +56,16 @@ module izh_bridge #(parameter integer N=16)(
     end
 endmodule
 
-module tt_um_izh_bridge_small(
+module tt_um_abiaselli_izh_bridge_6x4(
     input wire [7:0] ui_in, output wire [7:0] uo_out,
     input wire [7:0] uio_in, output wire [7:0] uio_out, uio_oe,
     input wire ena, clk, rst_n
 );
-    izh_bridge #(.N(4)) impl(ui_in,uo_out,uio_in,uio_out,uio_oe,ena,clk,rst_n);
+    izh_bridge #(.N(16)) impl(
+        .ui_in(ui_in), .uo_out(uo_out),
+        .uio_in(uio_in), .uio_out(uio_out), .uio_oe(uio_oe),
+        .ena(ena), .clk(clk), .rst_n(rst_n)
+    );
 endmodule
-module tt_um_izh_bridge_large(
-    input wire [7:0] ui_in, output wire [7:0] uo_out,
-    input wire [7:0] uio_in, output wire [7:0] uio_out, uio_oe,
-    input wire ena, clk, rst_n
-);
-    izh_bridge #(.N(16)) impl(ui_in,uo_out,uio_in,uio_out,uio_oe,ena,clk,rst_n);
-endmodule
+
 `default_nettype wire

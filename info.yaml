@@ -1,17 +1,18 @@
-# Initial target; silicon fit and timing have NOT been verified.
+# Tiny Tapeout IHP project information
 project:
-  title: "Izhikevich event bridge (16 neurons)"
-  author: "University of Delaware"
+  title: "Izhikevich event bridge (16 contexts)"
+  author: "Austin"
   discord: ""
-  description: "Programmable time-multiplexed neuron bank with digital event capture"
+  description: "Time-multiplexed fixed-point Izhikevich neuron bank with programmable synapses and external digital spike capture"
   language: "Verilog"
   clock_hz: 20000000
   tiles: "6x4"
-  top_module: "tt_um_izh_bridge_large"
+  top_module: "tt_um_abiaselli_izh_bridge_6x4"
   source_files:
     - "serial_mul.v"
     - "neuron_bank.v"
     - "project.v"
+
 pinout:
   ui[0]: "command_data[0]"
   ui[1]: "command_data[1]"
@@ -21,6 +22,7 @@ pinout:
   ui[5]: "command_data[5]"
   ui[6]: "command_data[6]"
   ui[7]: "command_data[7]"
+
   uo[0]: "response_data[0]"
   uo[1]: "response_data[1]"
   uo[2]: "response_data[2]"
@@ -29,6 +31,7 @@ pinout:
   uo[5]: "response_data[5]"
   uo[6]: "response_data[6]"
   uo[7]: "response_data[7]"
+
   uio[0]: "command_valid"
   uio[1]: "command_ready"
   uio[2]: "response_ready"
@@ -37,4 +40,5 @@ pinout:
   uio[5]: "spike_in1"
   uio[6]: "spike_in2"
   uio[7]: "spike_in3"
+
 yaml_version: 6
