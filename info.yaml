@@ -1,11 +1,11 @@
 # Tiny Tapeout IHP project information
 project:
   title: "Izhikevich event bridge (16 contexts)"
-  author: "Austin"
+  author: "Austin Biaselli"
   discord: ""
   description: "Time-multiplexed fixed-point Izhikevich neuron bank with programmable synapses and external digital spike capture"
   language: "Verilog"
-  clock_hz: 20000000
+  clock_hz: 10000000
   tiles: "6x4"
   top_module: "tt_um_abiaselli_izh_bridge_6x4"
   source_files:
